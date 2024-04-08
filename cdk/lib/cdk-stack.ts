@@ -39,16 +39,6 @@ export class CdkStack extends cdk.Stack {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL
         });
 
-        // // Create a bucket to store frontend
-        // new s3.Bucket(this, 'FrontendBucket', {
-        //     versioned: true,
-        //     bucketName: 'ywt-frontend-bucket',
-        //     removalPolicy: cdk.RemovalPolicy.DESTROY,
-        //     autoDeleteObjects: true,
-        //     encryption: s3.BucketEncryption.S3_MANAGED,
-
-        // });
-
         // Create a role for fileUpload lambda function
         const fileTableInputRole = new iam.Role(this, 'FileInputRole', {
             roleName: 'fileInputRole',
@@ -78,6 +68,7 @@ export class CdkStack extends cdk.Stack {
 
         // Create a API Gateway
         // [TODO] May add cors later
+        const route = '/fileInputData';
         const fileInputIntegration = new HttpLambdaIntegration('fileInputIntegration', createFileMetaLambda);
 
         const api = new apigateway.HttpApi(this, 'FileApi', {
@@ -86,7 +77,7 @@ export class CdkStack extends cdk.Stack {
         });
 
         api.addRoutes({
-            path: '/fileInputData',
+            path: route,
             methods: [apigateway.HttpMethod.POST],
             integration: fileInputIntegration
         });
@@ -182,6 +173,69 @@ export class CdkStack extends cdk.Stack {
             filters: [lambda.FilterCriteria.filter({ eventName: lambda.FilterRule.isEqual('INSERT') })],
             batchSize: 1
         }))
+
         ec2CreationLambda.node.addDependency(fileTable, ec2CreationRole, launchTemplate);
+
+        // Create a bucket to store frontend
+        const frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
+            versioned: true,
+            bucketName: 'ywt-frontend-bucket',
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            autoDeleteObjects: true,
+            encryption: s3.BucketEncryption.S3_MANAGED,
+            websiteIndexDocument: 'index.html',
+            websiteErrorDocument: 'index.html',
+            publicReadAccess: true,
+            blockPublicAccess: {
+                blockPublicAcls: false,
+                blockPublicPolicy: false,
+                ignorePublicAcls: false,
+                restrictPublicBuckets: false
+            }
+        });
+
+        fileBucket.addCorsRule({
+            allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
+            allowedOrigins: [frontendBucket.bucketWebsiteUrl],
+            allowedHeaders: ['*'],
+            maxAge: 3000
+        });
+
+        // Create a user and access key for frontend
+        const frontendUser = new iam.User(this, 'FrontendUser', {
+            userName: 'frontendUser',
+        });
+
+        fileBucket.grantWrite(frontendUser);
+
+        const frontendAccessKey = new iam.AccessKey(this, 'FrontendAccessKey', {
+            user: frontendUser
+        });
+
+        // Create outputs
+        new cdk.CfnOutput(this, 'FrontendAccessKeyId', {
+            value: frontendAccessKey.accessKeyId,
+            description: 'Frontend Access Key Id'
+        });
+        new cdk.CfnOutput(this, 'FrontendAccessKeySecret', {
+            value: frontendAccessKey.secretAccessKey.unsafeUnwrap(),
+            description: 'Frontend Access Key Secret'
+        });
+        new cdk.CfnOutput(this, 'WebsiteUrl', {
+            value: frontendBucket.bucketWebsiteUrl,
+            description: 'Frontend Url'
+        });
+        new cdk.CfnOutput(this, 'BucketName', {
+            value: fileBucket.bucketName,
+            description: 'File Bucket Name'
+        });
+        new cdk.CfnOutput(this, 'APIUrl', {
+            value: api.url || '',
+            description: 'API Url'
+        });
+        new cdk.CfnOutput(this, 'APIRoute', {
+            value: route,
+            description: 'API Route'
+        });
     }
 }
