@@ -15,7 +15,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 
 // This stack creates resources for the file management service
 export class CdkStack extends cdk.Stack {
-    constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    constructor(scope: Construct, id: string, route: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
         // Create a table to store file metadata
@@ -68,20 +68,7 @@ export class CdkStack extends cdk.Stack {
 
         // Create a API Gateway
         // [TODO] May add cors later
-        const route = process.env.API_ROUTE || '/file';
         const fileInputIntegration = new HttpLambdaIntegration('fileInputIntegration', createFileMetaLambda);
-
-        const api = new apigateway.HttpApi(this, 'FileApi', {
-            apiName: 'fileApi',
-            description: 'This service creates a new item of text input and file input path in dynamoDB',
-        });
-
-        api.addRoutes({
-            path: route,
-            methods: [apigateway.HttpMethod.POST],
-            integration: fileInputIntegration
-        });
-
 
         // Create a role for ec2 instance to access fileBucket
         const fileTableOutputRole = new iam.Role(this, 'FileOutputRole', {
@@ -138,7 +125,7 @@ export class CdkStack extends cdk.Stack {
             instanceInitiatedShutdownBehavior: ec2.InstanceInitiatedShutdownBehavior.TERMINATE
         });
 
-        launchTemplate.node.addDependency(scriptBucket, defaultSG);
+        launchTemplate.node.addDependency(defaultSG);
 
         // Create a role for Lambda function to create ec2 instance
         const ec2CreationRole = new iam.Role(this, 'Ec2CreationRole', {
@@ -174,7 +161,7 @@ export class CdkStack extends cdk.Stack {
             batchSize: 1
         }))
 
-        ec2CreationLambda.node.addDependency(fileTable, ec2CreationRole, launchTemplate);
+        ec2CreationLambda.node.addDependency(fileTable, ec2CreationRole);
 
         // Create a bucket to store frontend
         const frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
@@ -199,6 +186,24 @@ export class CdkStack extends cdk.Stack {
             allowedOrigins: [frontendBucket.bucketWebsiteUrl],
             allowedHeaders: ['*'],
             maxAge: 3000
+        });
+
+        const api = new apigateway.HttpApi(this, 'FileApi', {
+            apiName: 'fileApi',
+            description: 'This service creates a new item of text input and file input path in dynamoDB',
+            corsPreflight: {
+                allowOrigins: [frontendBucket.bucketWebsiteUrl],
+                allowMethods: [apigateway.CorsHttpMethod.POST],
+                allowHeaders: ['*']
+            }
+        });
+
+        api.node.addDependency(frontendBucket);
+
+        const fileRoute = new apigateway.HttpRoute(this, 'FileRoute', {
+            httpApi: api,
+            routeKey: apigateway.HttpRouteKey.with(route, apigateway.HttpMethod.POST),
+            integration: fileInputIntegration
         });
 
         // Create a user and access key for frontend
@@ -229,7 +234,7 @@ export class CdkStack extends cdk.Stack {
             value: fileBucket.bucketName,
             description: 'File Bucket Name'
         });
-        new cdk.CfnOutput(this, 'FrontendBucket', {
+        new cdk.CfnOutput(this, 'FrontendBucketName', {
             value: frontendBucket.bucketName,
             description: 'Frontend Table Name'
         });
@@ -238,7 +243,7 @@ export class CdkStack extends cdk.Stack {
             description: 'API Url'
         });
         new cdk.CfnOutput(this, 'APIRoute', {
-            value: route,
+            value: fileRoute.path || '',
             description: 'API Route'
         });
     }
