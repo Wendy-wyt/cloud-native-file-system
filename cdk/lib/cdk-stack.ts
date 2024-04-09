@@ -68,7 +68,7 @@ export class CdkStack extends cdk.Stack {
 
         // Create a API Gateway
         // [TODO] May add cors later
-        const route = '/fileInputData';
+        const route = process.env.API_ROUTE || '/file';
         const fileInputIntegration = new HttpLambdaIntegration('fileInputIntegration', createFileMetaLambda);
 
         const api = new apigateway.HttpApi(this, 'FileApi', {
@@ -228,6 +228,10 @@ export class CdkStack extends cdk.Stack {
         new cdk.CfnOutput(this, 'BucketName', {
             value: fileBucket.bucketName,
             description: 'File Bucket Name'
+        });
+        new cdk.CfnOutput(this, 'FrontendBucket', {
+            value: frontendBucket.bucketName,
+            description: 'Frontend Table Name'
         });
         new cdk.CfnOutput(this, 'APIUrl', {
             value: api.url || '',
