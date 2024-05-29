@@ -1,4 +1,4 @@
-# fovus-interview
+# Cloud-Native Project
 
 System Structure
 ![image](https://github.com/Wendy-wyt/fovus-interview/assets/78782949/b28003a3-3303-410a-9cbc-f1e11faf1d69)
